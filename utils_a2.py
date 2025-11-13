@@ -27,13 +27,23 @@ DEFAULT_THRESHOLDS = {
 }
 
 GROUNDING_DINO_CONFIG_URL = (
-    "https://raw.githubusercontent.com/IDEA-Research/GroundingDINO/main/"
+    "https://raw.githubusercontent.com/IDEA-Research/GroundingDINO/main/",
     "groundingdino/config/GroundingDINO_SwinT_OGC.py"
 )
 
 GROUNDING_DINO_WEIGHTS_URL = (
-    "https://huggingface.co/IDEA-Research/GroundingDINO/resolve/main/"
-    "groundingdino_swint_ogc.pth"
+    "https://github.com/IDEA-Research/GroundingDINO/releases/download/",
+    "v0.1.0-alpha/groundingdino_swint_ogc.pth"
+)
+
+GROUNDING_DINO_CONFIG_URL_SWINB = (
+    "https://raw.githubusercontent.com/IDEA-Research/GroundingDINO/main/",
+    "groundingdino/config/GroundingDINO_SwinB_cfg.py"
+)
+
+GROUNDING_DINO_WEIGHTS_URL_SWINB = (
+    "https://github.com/IDEA-Research/GroundingDINO/releases/download/",
+    "v0.1.0-alpha2/groundingdino_swinb_cogcoor.pth"
 )
 
 # ---------------------------------------------------------

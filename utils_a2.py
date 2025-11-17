@@ -1,1 +1,139 @@
-{"metadata":{"kernelspec":{"language":"python","display_name":"Python 3","name":"python3"},"language_info":{"pygments_lexer":"ipython3","nbconvert_exporter":"python","version":"3.6.4","file_extension":".py","codemirror_mode":{"name":"ipython","version":3},"name":"python","mimetype":"text/x-python"},"kaggle":{"accelerator":"none","dataSources":[],"dockerImageVersionId":31192,"isInternetEnabled":true,"language":"python","sourceType":"script","isGpuEnabled":false}},"nbformat_minor":4,"nbformat":4,"cells":[{"cell_type":"code","source":"\n\"\"\"\nutils_a2.py\nShared utilities for Assignment 2 (Tasks 1–3)\nGroundingDINO + Prompt Learning + Evaluation\n\"\"\"\n\nimport os\nimport requests\nimport torch\nimport pandas as pd\nimport numpy as np\nfrom torchvision.ops import box_iou\n\n# ---------------------------------------------------------\n# DEFAULT ARGUMENTS (shared across all scripts)\n# ---------------------------------------------------------\nDEFAULT_PROMPTS = {\n    \"A\": [\"a malignant tumor\"],\n    \"B\": [\"a malignant tumor\"],\n    \"C\": [\"a malignant tumor\"],\n}\n\nDEFAULT_THRESHOLDS = {\n    \"box_threshold\": 0.35,\n    \"text_threshold\": 0.25,\n}\n\nGROUNDING_DINO_CONFIG_URL = (\n    \"https://raw.githubusercontent.com/IDEA-Research/GroundingDINO/main/groundingdino/config/GroundingDINO_SwinT_OGC.py\"\n)\n\nGROUNDING_DINO_WEIGHTS_URL = (\n    \"https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth\"\n)\n\nGROUNDING_DINO_CONFIG_URL_SWINB = (\n    \"https://raw.githubusercontent.com/IDEA-Research/GroundingDINO/main/\",\n    \"groundingdino/config/GroundingDINO_SwinB_cfg.py\"\n)\n\nGROUNDING_DINO_WEIGHTS_URL_SWINB = (\n    \"https://github.com/IDEA-Research/GroundingDINO/releases/download/\",\n    \"v0.1.0-alpha2/groundingdino_swinb_cogcoor.pth\"\n)\n\n# ---------------------------------------------------------\n# Path Utilities\n# ---------------------------------------------------------\ndef ensure_dir(path):\n    os.makedirs(path, exist_ok=True)\n    return path\n\ndef path_exists(path):\n    return os.path.exists(path)\n\n# ---------------------------------------------------------\n# Download Utility\n# ---------------------------------------------------------\ndef download_file(url, dst_path):\n    if os.path.exists(dst_path):\n        return dst_path\n    print(f\"[INFO] Downloading: {url}\")\n    resp = requests.get(url)\n    with open(dst_path, \"wb\") as f:\n        f.write(resp.content)\n    print(f\"[INFO] Saved to {dst_path}\")\n    return dst_path\n\n# ---------------------------------------------------------\n# Annotation Utilities\n# ---------------------------------------------------------\ndef load_annotations(csv_path):\n    df = pd.read_csv(csv_path)\n    return df\n\ndef get_gt_boxes(df, image_name):\n    rows = df[df[\"image_name\"] == image_name]\n    return rows[[\"xmin\", \"ymin\", \"xmax\", \"ymax\"]].values\n\n\n# ---------------------------------------------------------\n# Evaluating Predicted vs GT (AP Computation)\n# ---------------------------------------------------------\ndef compute_ap(pred_boxes, gt_boxes, iou_threshold=0.5):\n    \"\"\"\n    Simple AP estimator (one-point precision × recall).\n    \"\"\"\n    if len(pred_boxes) == 0 and len(gt_boxes) == 0:\n        return 1.0\n    if len(pred_boxes) == 0 or len(gt_boxes) == 0:\n        return 0.0\n\n    ious = box_iou(\n        torch.tensor(pred_boxes, dtype=torch.float32),\n        torch.tensor(gt_boxes, dtype=torch.float32)\n    ).numpy()\n\n    matched = set()\n    tp, fp = 0, 0\n\n    for i in range(len(pred_boxes)):\n        max_iou = ious[i].max()\n        if max_iou >= iou_threshold:\n            g = np.argmax(ious[i])\n            if g not in matched:\n                matched.add(g)\n                tp += 1\n            else:\n                fp += 1\n        else:\n            fp += 1\n\n    fn = len(gt_boxes) - len(matched)\n\n    precision = tp / (tp + fp + 1e-6)\n    recall = tp / (tp + fn + 1e-6)\n    return precision * recall  # simplified AP\n\n\n# ---------------------------------------------------------\n# Formatting / Display Utilities\n# ---------------------------------------------------------\ndef format_report(results):\n    \"\"\"\n    results = {\n        \"Dataset_A\": { \"AP\": value, \"prompt\": \"...\", ... },\n        ...\n    }\n    \"\"\"\n    lines = [\"\\n========== Zero-Shot Report ==========\\n\"]\n    for name, info in results.items():\n        lines.append(f\"\\nDataset: {name}\")\n        lines.append(f\"  Prompt Used     : {info['prompt']}\")\n        lines.append(f\"  Box Threshold   : {info['box_threshold']}\")\n        lines.append(f\"  Text Threshold  : {info['text_threshold']}\")\n        lines.append(f\"  Mean AP         : {info['ap']:.4f}\")\n    lines.append(\"\\n======================================\\n\")\n    return \"\\n\".join(lines)\n","metadata":{"_uuid":"a0f383de-4679-45ab-90aa-a15e83c9b87c","_cell_guid":"ebc4f352-9727-4820-b68a-1453e62c0ce8","trusted":true,"collapsed":false,"jupyter":{"outputs_hidden":false}},"outputs":[],"execution_count":null}]}
+
+"""
+utils_a2.py
+Shared utilities for Assignment 2 (Tasks 1–3)
+GroundingDINO + Prompt Learning + Evaluation
+"""
+
+import os
+import requests
+import torch
+import pandas as pd
+import numpy as np
+from torchvision.ops import box_iou
+
+# ---------------------------------------------------------
+# DEFAULT ARGUMENTS (shared across all scripts)
+# ---------------------------------------------------------
+DEFAULT_PROMPTS = {
+    "A": ["a malignant tumor"],
+    "B": ["a malignant tumor"],
+    "C": ["a malignant tumor"],
+}
+
+DEFAULT_THRESHOLDS = {
+    "box_threshold": 0.35,
+    "text_threshold": 0.25,
+}
+
+GROUNDING_DINO_CONFIG_URL = (
+    "https://raw.githubusercontent.com/IDEA-Research/GroundingDINO/main/groundingdino/config/GroundingDINO_SwinT_OGC.py"
+)
+
+GROUNDING_DINO_WEIGHTS_URL = (
+    "https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth"
+)
+
+GROUNDING_DINO_CONFIG_URL_SWINB = (
+    "https://raw.githubusercontent.com/IDEA-Research/GroundingDINO/main/",
+    "groundingdino/config/GroundingDINO_SwinB_cfg.py"
+)
+
+GROUNDING_DINO_WEIGHTS_URL_SWINB = (
+    "https://github.com/IDEA-Research/GroundingDINO/releases/download/",
+    "v0.1.0-alpha2/groundingdino_swinb_cogcoor.pth"
+)
+
+# ---------------------------------------------------------
+# Path Utilities
+# ---------------------------------------------------------
+def ensure_dir(path):
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def path_exists(path):
+    return os.path.exists(path)
+
+# ---------------------------------------------------------
+# Download Utility
+# ---------------------------------------------------------
+def download_file(url, dst_path):
+    if os.path.exists(dst_path):
+        return dst_path
+    print(f"[INFO] Downloading: {url}")
+    resp = requests.get(url)
+    with open(dst_path, "wb") as f:
+        f.write(resp.content)
+    print(f"[INFO] Saved to {dst_path}")
+    return dst_path
+
+# ---------------------------------------------------------
+# Annotation Utilities
+# ---------------------------------------------------------
+def load_annotations(csv_path):
+    df = pd.read_csv(csv_path)
+    return df
+
+def get_gt_boxes(df, image_name):
+    rows = df[df["image_name"] == image_name]
+    return rows[["xmin", "ymin", "xmax", "ymax"]].values
+
+
+# ---------------------------------------------------------
+# Evaluating Predicted vs GT (AP Computation)
+# ---------------------------------------------------------
+def compute_ap(pred_boxes, gt_boxes, iou_threshold=0.5):
+    """
+    Simple AP estimator (one-point precision × recall).
+    """
+    if len(pred_boxes) == 0 and len(gt_boxes) == 0:
+        return 1.0
+    if len(pred_boxes) == 0 or len(gt_boxes) == 0:
+        return 0.0
+
+    ious = box_iou(
+        torch.tensor(pred_boxes, dtype=torch.float32),
+        torch.tensor(gt_boxes, dtype=torch.float32)
+    ).numpy()
+
+    matched = set()
+    tp, fp = 0, 0
+
+    for i in range(len(pred_boxes)):
+        max_iou = ious[i].max()
+        if max_iou >= iou_threshold:
+            g = np.argmax(ious[i])
+            if g not in matched:
+                matched.add(g)
+                tp += 1
+            else:
+                fp += 1
+        else:
+            fp += 1
+
+    fn = len(gt_boxes) - len(matched)
+
+    precision = tp / (tp + fp + 1e-6)
+    recall = tp / (tp + fn + 1e-6)
+    return precision * recall  # simplified AP
+
+
+# ---------------------------------------------------------
+# Formatting / Display Utilities
+# ---------------------------------------------------------
+def format_report(results):
+    """
+    results = {
+        "Dataset_A": { "AP": value, "prompt": "...", ... },
+        ...
+    }
+    """
+    lines = ["\n========== Zero-Shot Report ==========\n"]
+    for name, info in results.items():
+        lines.append(f"\nDataset: {name}")
+        lines.append(f"  Prompt Used     : {info['prompt']}")
+        lines.append(f"  Box Threshold   : {info['box_threshold']}")
+        lines.append(f"  Text Threshold  : {info['text_threshold']}")
+        lines.append(f"  Mean AP         : {info['ap']:.4f}")
+    lines.append("\n======================================\n")
+    return "\n".join(lines)

@@ -1,4 +1,3 @@
-
 """
 utils_a2.py
 Shared utilities for Assignment 2 (Tasks 1–3)
@@ -71,13 +70,11 @@ def download_file(url, dst_path):
 # Annotation Utilities
 # ---------------------------------------------------------
 def load_annotations(csv_path):
-    df = pd.read_csv(csv_path)
-    return df
+    return pd.read_csv(csv_path)
 
 def get_gt_boxes(df, image_name):
     rows = df[df["image_name"] == image_name]
     return rows[["xmin", "ymin", "xmax", "ymax"]].values
-
 
 # ---------------------------------------------------------
 # Evaluating Predicted vs GT (AP Computation)
@@ -117,17 +114,10 @@ def compute_ap(pred_boxes, gt_boxes, iou_threshold=0.5):
     recall = tp / (tp + fn + 1e-6)
     return precision * recall  # simplified AP
 
-
 # ---------------------------------------------------------
 # Formatting / Display Utilities
 # ---------------------------------------------------------
 def format_report(results):
-    """
-    results = {
-        "Dataset_A": { "AP": value, "prompt": "...", ... },
-        ...
-    }
-    """
     lines = ["\n========== Zero-Shot Report ==========\n"]
     for name, info in results.items():
         lines.append(f"\nDataset: {name}")

@@ -12,13 +12,14 @@ import os
 import torch
 from tqdm import tqdm
 from groundingdino.util.inference import load_model, load_image, predict
+import sys
 
 # === Load central configuration ===
 from setup import get_paths_and_device
 PATHS, DEVICE, MODE = get_paths_and_device()   # default = local
 
 if MODE == "kaggle":
-    import sys
+
     sys.path.append("/kaggle/usr/lib/utils_a2")
 
 
@@ -108,26 +109,39 @@ class GroundingDINOEvaluator:
 # =====================================================
 # MAIN
 # =====================================================
-def main():
+def main(dataset_path=None, csv_path=None, prompt=None, max_examples=None):
 
     evaluator = GroundingDINOEvaluator(device=DEVICE)
 
     evaluator.download_requirements(PATHS["weights"])
     evaluator.load_model()
 
-    dataset_paths = [
-        PATHS["dataset_A"],
-        PATHS["dataset_B"],
-        PATHS["dataset_C"]
-    ]
+    if dataset_path is not None:
+        dataset_paths = [dataset_path]
+    else:   
+        dataset_paths = [
+            PATHS["test_A"],
+            PATHS["test_B"],
+            PATHS["test_C"]
+        ]
 
-    annotation_files = ["test.csv", "test_updated.csv", "test.csv"]
+    if csv_path is not None:
+        annotation_files = [csv_path]
+    else:
+        annotation_files = [
+            "test.csv",
+            "test_updated.csv",
+            "test.csv"
+        ]
 
-    prompts = [
-        DEFAULT_PROMPTS["A"][0],
-        DEFAULT_PROMPTS["B"][0],
-        DEFAULT_PROMPTS["C"][0],
-    ]
+    if prompt is not None:
+        prompts = [prompt]
+    else:
+        prompts = [
+            DEFAULT_PROMPTS["A"][0],
+            DEFAULT_PROMPTS["B"][0],
+            DEFAULT_PROMPTS["C"][0],
+        ]
 
     results = {}
 
@@ -139,7 +153,7 @@ def main():
             prompt=prompts[i],
             box_threshold=DEFAULT_THRESHOLDS["box_threshold"],
             text_threshold=DEFAULT_THRESHOLDS["text_threshold"],
-            max_examples=2,
+            max_examples=max_examples,
         )
         results[ds_name] = {
             "prompt": prompts[i],
@@ -152,4 +166,27 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+
+    if len(sys.argv) > 1:
+        dataset_path = sys.argv[1]
+    else:
+        dataset_path = None
+
+    if len(sys.argv) > 2:
+        csv_path = sys.argv[2]
+    else:
+        csv_path = None
+
+    if len(sys.argv) > 3:
+        prompt = sys.argv[3]
+    else:
+        prompt = None
+
+    if len(sys.argv) > 4:
+        max_examples = int(sys.argv[4])
+    else:
+        max_examples = None
+
+    main(dataset_path=dataset_path, csv_path=csv_path, prompt=prompt, max_examples=max_examples)
+
+

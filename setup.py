@@ -41,7 +41,9 @@ def get_paths_and_device(mode="local"):
         }
 
         # Device selection for Mac (M1/M2/M3)
-        if torch.backends.mps.is_available():
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
             device = "mps"
         else:
             device = "cpu"

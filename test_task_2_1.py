@@ -32,8 +32,8 @@ warnings.filterwarnings("ignore")
 
 if MODE == "kaggle":
     sys.path.append("/kaggle/usr/lib/utils_a2")
-else:
-    sys.path.insert(0, "local_gdino")
+# else:
+sys.path.insert(0, "local_gdino")
 
 from groundingdino.util.inference import (
     load_model,
@@ -202,7 +202,7 @@ class CoOpEvaluator:
 
             # --- use learned CoOp context ---
             pred_boxes, logits, phrases = self.predict_with_context(
-                image_source, image, prompt, DEFAULT_THRESHOLDS["box_threshold"], DEFAULT_THRESHOLDS["text_threshold"]
+                image_source, image, prompt, 0.35, 0.25
             )
 
             # ------------------------------------

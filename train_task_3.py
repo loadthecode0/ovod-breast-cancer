@@ -5,8 +5,8 @@ from setup import get_paths_and_device
 PATHS, DEVICE, MODE = get_paths_and_device()
 if MODE == "kaggle":
     sys.path.append("/kaggle/usr/lib/utils_a2")
-elif MODE == "local":
-    sys.path.insert(0, "local_gdino")   # <--- points to folder that contains a patched groundingdino/
+# elif MODE == "local":
+sys.path.insert(0, "local_gdino")  
 
 
 import os

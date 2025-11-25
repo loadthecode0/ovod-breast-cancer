@@ -39,8 +39,8 @@ from setup import get_paths_and_device
 PATHS, DEVICE, MODE = get_paths_and_device()
 if MODE == "kaggle":
     sys.path.append("/kaggle/usr/lib/utils_a2")
-elif MODE == "local":
-    sys.path.insert(0, "local_gdino")   # <--- points to folder that contains a patched groundingdino/
+# elif MODE == "local":
+sys.path.insert(0, "local_gdino")   # <--- points to folder that contains a patched groundingdino/
 
 from groundingdino.util.inference import load_image, predict, annotate
 from groundingdino.util.misc import nested_tensor_from_tensor_list

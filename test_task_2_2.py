@@ -19,8 +19,8 @@ warnings.filterwarnings("ignore")
 
 if MODE == "kaggle":
     sys.path.append("/kaggle/usr/lib/utils_a2")
-else:
-    sys.path.insert(0, "local_gdino")
+# else:
+sys.path.insert(0, "local_gdino")
 
 from groundingdino.util.inference import (
     load_model,
@@ -343,8 +343,8 @@ def main(dataset_path=None, csv_path=None, context_path=None, prompt=None, max_e
         dataset_path=dataset_path,
         csv_name=csv_path,
         prompt=prompt,
-        box_threshold=DEFAULT_THRESHOLDS["box_threshold"],
-        text_threshold=DEFAULT_THRESHOLDS["text_threshold"],
+        box_threshold=0.15,
+        text_threshold=0.1,
         max_examples=max_examples
     )
 

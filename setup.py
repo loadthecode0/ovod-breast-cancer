@@ -22,6 +22,8 @@ def get_paths_and_device(mode="local"):
             "task_2_1_load": "/kaggle/working/task_2_1/",
             "task_2_2_save": "/kaggle/working/task_2_2/",
             "task_2_2_load": "/kaggle/working/task_2_2/",
+            "task_3_save": "/kaggle/working/task_3/",
+            "task_3_load": "/kaggle/working/task_3/",
         }
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -37,7 +39,9 @@ def get_paths_and_device(mode="local"):
             "task_2_1_save": "./weights/task_2_1_wts/",
             "task_2_1_load": "./weights/task_2_1_wts/",
             "task_2_2_save": "./weights/task_2_2_wts/",
-            "task_2_2_load": "./weights/task_2_2_wts/",
+            "task_2_2_load": "./weights/task_2_2_wts_new/",
+            "task_3_save": "./weights/task_3_wts/",
+            "task_3_load": "./weights/task_3_wts/",
         }
 
         # Device selection for Mac (M1/M2/M3)

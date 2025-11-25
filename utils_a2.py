@@ -21,14 +21,17 @@ from torchvision.ops import box_convert
 # ---------------------------------------------------------
 DEFAULT_PROMPTS = {
     "A": ["benign tissue . malignant tumor . dark background . dense tumor lump . no object ."],
-    # "B": ["benign tissue . malignant tumor . dark background . dense tumor lump . no object ."],
-    "B": ["malignant dense tumor lump ."],
+    "B": ["benign tissue . malignant tumor . dark background . dense tumor lump . no object ."],
+    # "B": ["background . dense malignant tumor lump ."],
     "C": ["benign tissue . malignant tumor . dark background . dense tumor lump . no object ."],
+    # "A": ["tumor ."],
+    # "B": ["tumor ."],
+    # "C": ["tumor ."],
 }
 
 DEFAULT_THRESHOLDS = {
-    "box_threshold": 0.025,
-    "text_threshold": 0.025,
+    "box_threshold": 0.15,
+    "text_threshold": 0.1,
 }
 
 GROUNDING_DINO_CONFIG_URL = (
@@ -260,7 +263,7 @@ def compute_coco_style_ap(
     logits,
     positive_phrases,
     pred_scores=None,
-    ignore_non_positive=True,
+    ignore_non_positive=False,
     img_path=None,
 ):
     """
@@ -290,24 +293,26 @@ def compute_coco_style_ap(
             AP_large
     """
 
-    pred_boxes = np.array(pred_boxes)
-    gt_boxes   = np.array(gt_boxes)
+    
 
-    print(f"len(gt_boxes) : {len(gt_boxes)}")
+    print(f"len(gt_boxes) : {len(gt_boxes)}, {gt_boxes.shape}, {gt_boxes.size}, {gt_boxes}")
     print(f"len(pred_boxes) : {len(pred_boxes)}")
 
-    print(f"gt_boxes: {gt_boxes}")
+    print(f"gt_boxes: {gt_boxes}, {type(gt_boxes)}")
     # Handle empty GT
-    if (len(gt_boxes) ==0 or gt_boxes.size == 0):
+    if ((len(gt_boxes.tolist()) ==0) or (gt_boxes.size == 0)):
         return {
             "AP": 0.0,
             "AP-positive": 1.0 if (len(pred_boxes) == 0 or pred_boxes.size == 0) else 0.0,
-            "AP05": 0.0,
+            "AP50": 0.0,
             "AP75": 0.0,
             "AP_small": 0.0,
             "AP_medium": 0.0,
             "AP_large": 0.0,
         }
+
+    pred_boxes = np.array(pred_boxes)
+    gt_boxes   = np.array(gt_boxes)
 
     # Default scores = 1.0
     if pred_scores is None:
@@ -349,7 +354,7 @@ def compute_coco_style_ap(
         return {
             "AP": 0.0,
             "AP-positive": 0.0,
-            "AP05": 0.0,
+            "AP50": 0.0,
             "AP75": 0.0,
             "AP_small": 0.0,
             "AP_medium": 0.0,
@@ -417,7 +422,7 @@ def compute_coco_style_ap(
     ###########################################################################
     ap_list = [compute_ap_at_threshold(t) for t in iou_thresholds]
     AP = float(np.mean(ap_list))
-    AP05 = float(ap_list[0])
+    AP50 = float(ap_list[0])
     AP75 = float(ap_list[int((0.75 - 0.5)/0.05)])  # which is index 5
 
     ###########################################################################
@@ -489,7 +494,7 @@ def compute_coco_style_ap(
     return {
         "AP": AP,
         "AP-positive": AP,
-        "AP05": AP05,
+        "AP50": AP50,
         "AP75": AP75,
         "AP_small": AP_small,
         "AP_medium": AP_medium,
@@ -508,6 +513,9 @@ def format_report(results):
         lines.append(f"  Box Threshold   : {info['box_threshold']}")
         lines.append(f"  Text Threshold  : {info['text_threshold']}")
         lines.append(f"  Mean AP         : {info['ap']:.8f}")
+        lines.append(f"  Mean AP-positive : {info['ap_positive']:.8f}")
+        lines.append(f"  Mean AP50 : {info['ap50']:.8f}")
+        lines.append(f"  Mean AP75 : {info['ap75']:.8f}")
     lines.append("\n======================================\n")
     return "\n".join(lines)
 

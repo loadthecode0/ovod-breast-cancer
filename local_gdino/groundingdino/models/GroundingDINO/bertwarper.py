@@ -221,7 +221,8 @@ def generate_masks_with_special_tokens(tokenized, special_tokens_list, tokenizer
     return attention_mask, position_ids.to(torch.long)
 
 
-def generate_masks_with_special_tokens_and_transfer_map(tokenized, special_tokens_list, tokenizer):
+def generate_masks_with_special_tokens_and_transfer_map(
+    tokenized, special_tokens_list, tokenizer):
     """Generate attention mask between each pair of special tokens
     Args:
         input_ids (torch.Tensor): input ids. Shape: [bs, num_token]
@@ -231,6 +232,7 @@ def generate_masks_with_special_tokens_and_transfer_map(tokenized, special_token
     """
     input_ids = tokenized["input_ids"]
     bs, num_token = input_ids.shape
+    # print(f"before special tokens mask: bs: {bs}, num_token: {num_token}")
     # special_tokens_mask: bs, num_token. 1 for special tokens. 0 for normal tokens
     special_tokens_mask = torch.zeros((bs, num_token), device=input_ids.device).bool()
     for special_token in special_tokens_list:
@@ -265,6 +267,46 @@ def generate_masks_with_special_tokens_and_transfer_map(tokenized, special_token
         torch.stack(cate_to_token_mask_listi, dim=0)
         for cate_to_token_mask_listi in cate_to_token_mask_list
     ]
+
+    # print(f"shapes in generate_masks_with_special_tokens_and_transfer_map:")
+    # print(f"attention_mask shape : {attention_mask.shape}")
+    # print(f"position_ids shape : {position_ids.shape}")
+    # print(f"cate_to_token_mask_list elt shape : {cate_to_token_mask_list[0].shape}")
+
+    # # --- aastha: pad every category mask for context tokens ---
+    # if K > 0:
+    #     T = num_token
+    #     # --- Expand attention mask ---
+    #     new_att = torch.ones(bs, K + T, K + T, dtype=torch.bool, device=input_ids.device)
+    #     new_att[:, K:, K:] = attention_mask
+    #     attention_mask = new_att
+
+    #     # --- Expand position IDs ---
+    #     new_pos = torch.zeros(bs, K + T, dtype=position_ids.dtype, device=input_ids.device)
+    #     # context tokens get position 0
+    #     new_pos[:, K:] = position_ids
+    #     position_ids = new_pos
+
+    #     # --- Expand cate_to_token_mask_list ---
+    #     padded_cate = []
+    #     for c2t in cate_to_token_mask_list:        # c2t: [num_cats, T]
+    #         if c2t.numel() == 0:                  # handle empty list
+    #             padded_cate.append(torch.zeros((0, K+T), device=input_ids.device).bool())
+    #             continue
+
+    #         pad = torch.zeros(c2t.size(0), K, dtype=torch.bool, device=input_ids.device)
+    #         c2t_pad = torch.cat([pad, c2t], dim=1)   # [num_cats, K+T]
+    #         padded_cate.append(c2t_pad)
+
+    #     cate_to_token_mask_list = padded_cate
+
+
+    # print(f"shapes in generate_masks_with_special_tokens_and_transfer_map after padding:")
+    # print(f"attention_mask shape : {attention_mask.shape}")
+    # print(f"position_ids shape : {position_ids.shape}")
+    # print(f"cate_to_token_mask_list elt shape : {cate_to_token_mask_list[0].shape}")
+
+
 
     # # padding mask
     # padding_mask = tokenized['attention_mask']

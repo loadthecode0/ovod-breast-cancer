@@ -233,13 +233,13 @@ class GroundingDINO(nn.Module):
             return_tensors="pt"
         ).to(device)
 
-        with torch.no_grad():
-            bert_output = self.bert(
-                input_ids=tokenized["input_ids"],
-                attention_mask=tokenized["attention_mask"],
-                position_ids=None
-            )
-            hidden = bert_output["last_hidden_state"]   # [B, T, D_bert]
+        # with torch.no_grad():
+        bert_output = self.bert(
+            input_ids=tokenized["input_ids"],
+            attention_mask=tokenized["attention_mask"],
+            position_ids=None
+        )
+        hidden = bert_output["last_hidden_state"]   # [B, T, D_bert]
 
         hidden = hidden.to(device)
 
@@ -268,95 +268,131 @@ class GroundingDINO(nn.Module):
         
 
         # patch by Aastha: supply text embeddings directly
-        text_embeddings = kw.get("text_embeddings", None)
-        if text_embeddings is not None:
-            te = text_embeddings
-            if te.dim() == 2:
-                te = te.unsqueeze(0)        # [1, T, D]
-            te = te.to(samples.device)
+        # --------------------------------------------
+        # Text / Context handling (supports CoOp / CoCoOp)
+        # --------------------------------------------
+        # New supported kwargs:
+        # - text_embeddings : tensor [B, T, D_bert] or [T, D_bert] (same as your earlier patch)
+        # - embeddings_mapped : bool (if True, text_embeddings are already mapped to D_model)
+        # - context_vectors : tensor [K, D_bert] or [B, K, D_bert]  (learnable CoOp vectors in BERT space by default)
+        # - context_embeddings_mapped : bool (if True, context_vectors are already mapped to D_model)
+        #
+        # Behavior:
+        # - We compute `encoded_text` (mapped to D_model) as before and then *prepend*
+        #   mapped context vectors to it (so the transformer sees [K+T] tokens).
+        #
+        # text_embeddings = kw.get("text_embeddings", None)
+        context_vectors = kw.get("context_vectors", None)
+        # embeddings_mapped = kw.get("embeddings_mapped", False)
+        context_mapped = kw.get("context_embeddings_mapped", False)
+        K=kw.get("K", 0)
 
-            self.feat_map.to(samples.device)
-
-            print(f"[INFO] text_embeddings device: {te.device}")
-            print(f"[INFO] samples device: {samples.device}")
-            print(f"[INFO] feat_map device: {self.feat_map.weight.device}")
-
-            # If embeddings_mapped=False, input is BERT space, so apply feat_map
-            embeddings_mapped = kw.get("embeddings_mapped", False)
-            if embeddings_mapped:
-                encoded_text = te           # already [B, T, hidden_dim]
-            else:
-                
-                encoded_text = self.feat_map(te)   # [B, T, hidden_dim]
-            
-
-            B, T, _ = encoded_text.shape
-
-            # All tokens visible
-            text_token_mask = torch.ones(B, T, dtype=torch.bool, device=samples.device)
-            text_self_attention_masks = torch.ones(B, T, T, dtype=torch.bool, device=samples.device)
-
-            # simple positional ids
-            position_ids = torch.arange(T, device=samples.device).unsqueeze(0).repeat(B, 1)
-
-            # truncate if needed
-            if T > self.max_text_len:
-                encoded_text = encoded_text[:, : self.max_text_len, :]
-                text_token_mask = text_token_mask[:, : self.max_text_len]
-                position_ids = position_ids[:, : self.max_text_len]
-                text_self_attention_masks = text_self_attention_masks[:, : self.max_text_len, : self.max_text_len]
-
+        if targets is None:
+            captions = kw["captions"]
         else:
-            if targets is None:
-                captions = kw["captions"]
-            else:
-                captions = [t["caption"] for t in targets]
-            len(captions)
+            captions = [t["caption"] for t in targets]
+        len(captions)
 
-            # encoder texts
-            tokenized = self.tokenizer(captions, padding="longest", return_tensors="pt").to(
-                samples.device
-            )
-            (
-                text_self_attention_masks,
-                position_ids,
-                cate_to_token_mask_list,
-            ) = generate_masks_with_special_tokens_and_transfer_map(
-                tokenized, self.specical_tokens, self.tokenizer
-            )
+        # print(f"captions: {captions}")
 
-            if text_self_attention_masks.shape[1] > self.max_text_len:
-                text_self_attention_masks = text_self_attention_masks[
-                    :, : self.max_text_len, : self.max_text_len
-                ]
-                position_ids = position_ids[:, : self.max_text_len]
-                tokenized["input_ids"] = tokenized["input_ids"][:, : self.max_text_len]
-                tokenized["attention_mask"] = tokenized["attention_mask"][:, : self.max_text_len]
-                tokenized["token_type_ids"] = tokenized["token_type_ids"][:, : self.max_text_len]
+        captions = ["[PAD] "*K + ". " + c for c in captions]
+        # print(f"captions: {captions}")
 
-            # extract text embeddings
-            if self.sub_sentence_present:
-                tokenized_for_encoder = {k: v for k, v in tokenized.items() if k != "attention_mask"}
-                tokenized_for_encoder["attention_mask"] = text_self_attention_masks
-                tokenized_for_encoder["position_ids"] = position_ids
-            else:
-                # import ipdb; ipdb.set_trace()
-                tokenized_for_encoder = tokenized
+        # encoder texts
+        tokenized = self.tokenizer(captions, padding="longest", return_tensors="pt").to(
+            samples.device
+        )
 
-            bert_output = self.bert(**tokenized_for_encoder)  # bs, 195, 768
+        # print(f"tokenized: {tokenized}, {type(tokenized)}")
+        (
+            text_self_attention_masks,
+            position_ids,
+            cate_to_token_mask_list,
+        ) = generate_masks_with_special_tokens_and_transfer_map(
+            tokenized, self.specical_tokens, self.tokenizer
+        )
 
-            encoded_text = self.feat_map(bert_output["last_hidden_state"])  # bs, 195, d_model
-            text_token_mask = tokenized.attention_mask.bool()  # bs, 195
-            # text_token_mask: True for nomask, False for mask
-            # text_self_attention_masks: True for nomask, False for mask
+        # truncation
+        if text_self_attention_masks.shape[1] > self.max_text_len:
+            text_self_attention_masks = text_self_attention_masks[
+                :, : self.max_text_len, : self.max_text_len
+            ]
+            position_ids = position_ids[:, : self.max_text_len]
+            tokenized["input_ids"] = tokenized["input_ids"][:, : self.max_text_len]
+            tokenized["attention_mask"] = tokenized["attention_mask"][:, : self.max_text_len]
+            tokenized["token_type_ids"] = tokenized["token_type_ids"][:, : self.max_text_len]
 
-            if encoded_text.shape[1] > self.max_text_len:
-                encoded_text = encoded_text[:, : self.max_text_len, :]
-                text_token_mask = text_token_mask[:, : self.max_text_len]
-                position_ids = position_ids[:, : self.max_text_len]
-                text_self_attention_masks = text_self_attention_masks[
-                    :, : self.max_text_len, : self.max_text_len
-                ]
+        # extract text embeddings
+        if self.sub_sentence_present:
+            tokenized_for_encoder = {k: v for k, v in tokenized.items() if k != "attention_mask"}
+            tokenized_for_encoder["attention_mask"] = text_self_attention_masks
+            tokenized_for_encoder["position_ids"] = position_ids
+        else:
+            # import ipdb; ipdb.set_trace()
+            tokenized_for_encoder = tokenized
+        # print("shapes of tokenized_for_encoder:")
+        # print(f"tokenized_for_encoder['input_ids']: {tokenized_for_encoder['input_ids'].shape}")
+        # print(f"tokenized_for_encoder['attention_mask']: {tokenized_for_encoder['attention_mask'].shape}")
+        # print(f"tokenized_for_encoder['position_ids']: {tokenized_for_encoder['position_ids'].shape}")
+        # print(f"tokenized_for_encoder['token_type_ids']: {tokenized_for_encoder['token_type_ids'].shape}")
+        
+        # print("values of tokenized_for_encoder:")
+        # print(f"tokenized_for_encoder['input_ids'] values: {tokenized_for_encoder['input_ids'][0]}")
+        # print(f"tokenized_for_encoder['attention_mask'] values: {tokenized_for_encoder['attention_mask']}")
+        # print(f"tokenized_for_encoder['attention_mask'][0][0] values: {tokenized_for_encoder['attention_mask'][0][0]}")
+        # print(f"tokenized_for_encoder['attention_mask'][0][1] values: {tokenized_for_encoder['attention_mask'][0][1]}")
+        # print(f"tokenized_for_encoder['attention_mask'][0][2] values: {tokenized_for_encoder['attention_mask'][0][2]}")
+
+        # print(f"tokenized_for_encoder['position_ids'] values: {tokenized_for_encoder['position_ids']}")
+        # print(f"tokenized_for_encoder['token_type_ids'] values: {tokenized_for_encoder['token_type_ids']}")
+
+        bert_output = self.bert(**tokenized_for_encoder)  # bs, 195, 768
+
+        encoded_text = self.feat_map(bert_output["last_hidden_state"])  # bs, 195, d_model
+        # print(f"encoded_text shape before replacement: {encoded_text.shape}")
+
+        if context_vectors is not None:
+            ctx = context_vectors
+            if ctx.dim() == 2: # [K,D]
+                ctx = ctx.unsqueeze(0)   # [1,K,D]
+            if ctx.size(0) == 1:
+                ctx = ctx.repeat(encoded_text.size(0), 1, 1) # [B,K,D]
+            # print(f"ctx shape: {ctx.shape}")
+            if not context_mapped:
+                # map from BERT space → hidden_dim
+                ctx = self.feat_map(ctx)
+
+            # print(f"ctx shape before cat: {ctx.shape}")
+
+            # Prepend context ➜ final sequence: [B, K+T, D] - NO
+            # encoded_text = torch.cat([ctx, encoded_text], dim=1)
+            old_encoded_text = encoded_text.clone()
+            encoded_text[:, 1:1+K, :] = ctx   # replace PAD embeddings
+
+            # print(f"encoded_text shape after replacement: {encoded_text.shape}")
+
+            # # Now update masks
+            # B, T2, _ = encoded_text.shape
+     
+        text_token_mask = tokenized.attention_mask.bool()  # bs, 195
+        # text_token_mask: True for nomask, False for mask
+        # text_self_attention_masks: True for nomask, False for mask
+
+        # print("patched masks:")
+        # print(" - text_token_mask:", text_token_mask.shape)
+        # print(" - text_self_attention_masks:", text_self_attention_masks.shape)
+        # print(" - first cate_to_token_mask_list entry:", cate_to_token_mask_list[0].shape)
+
+
+        
+        # truncation
+        if encoded_text.shape[1] > self.max_text_len:
+            encoded_text = encoded_text[:, : self.max_text_len, :]
+            text_token_mask = text_token_mask[:, : self.max_text_len]
+            position_ids = position_ids[:, : self.max_text_len]
+            text_self_attention_masks = text_self_attention_masks[
+                :, : self.max_text_len, : self.max_text_len
+            ]
 
         text_dict = {
             "encoded_text": encoded_text,  # bs, 195, d_model
@@ -393,6 +429,20 @@ class GroundingDINO(nn.Module):
                 poss.append(pos_l)
 
         input_query_bbox = input_query_label = attn_mask = dn_meta = None
+        # print("shapes of srcs:")
+        # for i in range(len(srcs)):
+            # print(f"srcs[{i}].shape: {srcs[i].shape}")
+        # print("shapes of masks:")
+        # for i in range(len(masks)):
+            # print(f"masks[{i}].shape: {masks[i].shape}")
+        # print("shapes of poss:")
+        # for i in range(len(poss)):
+            # print(f"poss[{i}].shape: {poss[i].shape}")
+        # print("shapes of text_dict:")
+        # print(f"text_dict['encoded_text'].shape: {text_dict['encoded_text'].shape}")
+        # print(f"text_dict['text_token_mask'].shape: {text_dict['text_token_mask'].shape}")
+        # print(f"text_dict['position_ids'].shape: {text_dict['position_ids'].shape}")
+        # print(f"text_dict['text_self_attention_masks'].shape: {text_dict['text_self_attention_masks'].shape}")
         hs, reference, hs_enc, ref_enc, init_box_proposal = self.transformer(
             srcs, masks, input_query_bbox, poss, input_query_label, attn_mask, text_dict
         )
@@ -415,7 +465,7 @@ class GroundingDINO(nn.Module):
                 for layer_cls_embed, layer_hs in zip(self.class_embed, hs)
             ]
         )
-        out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord_list[-1]}
+        out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord_list[-1], "encoded_text": encoded_text, 'input_ids': tokenized_for_encoder['input_ids']}
 
         # # for intermediate outputs
         # if self.aux_loss:

@@ -175,6 +175,8 @@ class CoOpEvaluator:
         image_names = df["image_name"].unique()
         aps = []
         aps_positive = []
+        ap50 = []
+        ap75 = []
         print(f"Context: {context_path}")
         print(f"Dataset: {dataset_path}")
         print(f"CSV    : {csv_name}")
@@ -207,59 +209,59 @@ class CoOpEvaluator:
             # Visualization
             # ------------------------------------
             # pos_pred_boxes, pos_logits, pos_phrases = filter_pos_pred_boxes(pred_boxes, logits, phrases, ["malignant tumor", "dense tumor lump", "tumor"])
-            try:
-                annotated_pred = annotate(
-                    image_source=image_source,
-                    boxes=pred_boxes,
-                    logits=logits,
-                    phrases=phrases,
-                )
+            # try:
+            #     annotated_pred = annotate(
+            #         image_source=image_source,
+            #         boxes=pred_boxes,
+            #         logits=logits,
+            #         phrases=phrases,
+            #     )
 
-                gt_boxes = get_gt_boxes(df, img_name)
-                gt_boxes = np.array(gt_boxes)
+            #     gt_boxes = get_gt_boxes(df, img_name)
+            #     gt_boxes = np.array(gt_boxes)
 
-                # Save pred-only
-                save_path_pred = os.path.join(save_dir, f"{img_name}_pred_only.jpg")
-                plt.figure(figsize=(10, 10))
-                plt.imshow(annotated_pred[:, :, ::-1])
-                plt.axis("off")
-                plt.savefig(save_path_pred, dpi=150, bbox_inches="tight")
-                plt.close()
+            #     # Save pred-only
+            #     save_path_pred = os.path.join(save_dir, f"{img_name}_pred_only.jpg")
+            #     plt.figure(figsize=(10, 10))
+            #     plt.imshow(annotated_pred[:, :, ::-1])
+            #     plt.axis("off")
+            #     plt.savefig(save_path_pred, dpi=150, bbox_inches="tight")
+            #     plt.close()
 
-                # GT overlay if valid
-                if gt_boxes.size > 0:
-                    if gt_boxes.ndim == 1:
-                        gt_boxes = gt_boxes[np.newaxis, :]
-                    det = sv.Detections(xyxy=gt_boxes)
-                    annotator = sv.BoxAnnotator(
-                        color=sv.Color.from_hex("#39FAF1"),
-                        thickness=20,
-                        text_scale=2.0,
-                        text_thickness=5,
-                    )
-                    annotated_full = annotator.annotate(
-                        scene=annotated_pred.copy(),
-                        detections=det,
-                        labels=["GT"] * len(gt_boxes)
-                    )
+            #     # GT overlay if valid
+            #     if gt_boxes.size > 0:
+            #         if gt_boxes.ndim == 1:
+            #             gt_boxes = gt_boxes[np.newaxis, :]
+            #         det = sv.Detections(xyxy=gt_boxes)
+            #         annotator = sv.BoxAnnotator(
+            #             color=sv.Color.from_hex("#39FAF1"),
+            #             thickness=20,
+            #             text_scale=2.0,
+            #             text_thickness=5,
+            #         )
+            #         annotated_full = annotator.annotate(
+            #             scene=annotated_pred.copy(),
+            #             detections=det,
+            #             labels=["GT"] * len(gt_boxes)
+            #         )
 
-                    save_path_gt = os.path.join(save_dir, f"{img_name}_pred_gt.jpg")
-                    plt.figure(figsize=(10, 10))
-                    plt.imshow(annotated_full[:, :, ::-1])
-                    plt.axis("off")
-                    plt.savefig(save_path_gt, dpi=150, bbox_inches="tight")
-                    plt.close()
+            #         save_path_gt = os.path.join(save_dir, f"{img_name}_pred_gt.jpg")
+            #         plt.figure(figsize=(10, 10))
+            #         plt.imshow(annotated_full[:, :, ::-1])
+            #         plt.axis("off")
+            #         plt.savefig(save_path_gt, dpi=150, bbox_inches="tight")
+            #         plt.close()
 
-            except Exception as e:
-                print(f"[WARN] Visualization failed for {img_name}: {e}")
+            # except Exception as e:
+            #     print(f"[WARN] Visualization failed for {img_name}: {e}")
 
             # ------------------------------------
             # AP computation
             # ------------------------------------
-            # gt_boxes = get_gt_boxes(df, img_name)
-            # gt_boxes = np.array(gt_boxes)
-            # if gt_boxes.ndim == 1:
-            #     gt_boxes = gt_boxes[np.newaxis, :]
+            gt_boxes = get_gt_boxes(df, img_name)
+            gt_boxes = np.array(gt_boxes)
+            if gt_boxes.ndim == 1:
+                gt_boxes = gt_boxes[np.newaxis, :]
 
             h, w, _ = image_source.shape
             pred_boxes = pred_boxes * torch.Tensor([w, h, w, h])
@@ -276,12 +278,14 @@ class CoOpEvaluator:
             )
             aps.append(ap_dict["AP"])
             print(f"ap : {ap_dict['AP']}")
+            ap50.append(ap_dict["AP50"])
+            ap75.append(ap_dict["AP75"])
 
             if len(gt_boxes) > 0:
                 aps_positive.append(ap_dict["AP-positive"])
             
 
-        return float(sum(aps) / max(len(aps), 1)), float(sum(aps_positive) / max(len(aps_positive), 1))
+        return float(sum(aps) / max(len(aps), 1)), float(sum(aps_positive) / max(len(aps_positive), 1)), float(sum(ap50) / max(len(ap50), 1)), float(sum(ap75) / max(len(ap75), 1))
 
 
 # =====================================================
@@ -295,11 +299,11 @@ def main(dataset_path=None, csv_path=None, context_path=None, prompt=None, max_e
     evaluator.load_model()
 
     if context_path is None:
-        context_path = PATHS["task_2_1_load"] + "_data_dataset_A_train.pt"
+        context_path = PATHS["task_2_1_load"] + "_data_dataset_C_train.pt"
 
     evaluator.load_context(context_path)
 
-    dataset_path = dataset_path or PATHS["test_A"]
+    dataset_path = dataset_path or PATHS["test_C"]
     csv_path = csv_path or "test.csv"
     prompt = prompt or DEFAULT_PROMPTS["A"][0]
 
@@ -309,7 +313,7 @@ def main(dataset_path=None, csv_path=None, context_path=None, prompt=None, max_e
     print(f"Max Examples: {max_examples}")
     print(f"Prompt : {prompt}")
 
-    ap, ap_positive = evaluator.evaluate(
+    ap, ap_positive, ap50, ap75 = evaluator.evaluate(
         context_path=context_path,
         dataset_path=dataset_path,
         csv_name=csv_path,
@@ -327,6 +331,8 @@ def main(dataset_path=None, csv_path=None, context_path=None, prompt=None, max_e
     print(f"Prompt : {prompt}")
     print(f"AP     : {ap:.6f}")
     print(f"AP-positive     : {ap_positive:.6f}")
+    print(f"AP50     : {ap50:.6f}")
+    print(f"AP75     : {ap75:.6f}")
     print("=====================================\n")
 
 

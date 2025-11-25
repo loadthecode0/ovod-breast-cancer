@@ -12,7 +12,9 @@ import os
 import torch
 from tqdm import tqdm
 from groundingdino.util.inference import load_model, load_image, predict
+from torchvision.ops import box_convert
 import sys
+import numpy as np
 
 # === Load central configuration ===
 from setup import get_paths_and_device
@@ -32,6 +34,7 @@ from utils_a2 import (
     load_annotations,
     get_gt_boxes,
     compute_ap,
+    compute_coco_style_ap,
     format_report,
     GROUNDING_DINO_CONFIG_URL,
     GROUNDING_DINO_WEIGHTS_URL,
@@ -71,6 +74,7 @@ class GroundingDINOEvaluator:
 
         image_names = df["image_name"].unique()
         aps = []
+        aps_positive = []
 
         for img_name in tqdm(image_names, desc=f"Evaluating {dataset_path}"):
             img_path = os.path.join(dataset_path, img_name)
@@ -79,7 +83,7 @@ class GroundingDINOEvaluator:
 
             image_source, image = load_image(img_path)
 
-            boxes, logits, phrases = predict(
+            pred_boxes, logits, phrases = predict(
                 model=self.model,
                 image=image,
                 caption=prompt,
@@ -88,17 +92,39 @@ class GroundingDINOEvaluator:
                 device=self.device,
             )
 
-            pred_boxes = boxes * torch.tensor([
-                image_source.shape[1], image_source.shape[0],
-                image_source.shape[1], image_source.shape[0]
-            ])
+            # pred_boxes = boxes * torch.tensor([
+            #     image_source.shape[1], image_source.shape[0],
+            #     image_source.shape[1], image_source.shape[0]
+            # ])
 
             gt_boxes = get_gt_boxes(df, img_name)
+            gt_boxes = np.array(gt_boxes)
+            if gt_boxes.ndim == 1:
+                gt_boxes = gt_boxes[np.newaxis, :]
 
-            ap = compute_ap(pred_boxes.numpy(), gt_boxes, iou_threshold)
-            aps.append(ap)
+            # ap = compute_coco_style_ap(pred_boxes.numpy(), gt_boxes, iou_threshold)
+            h, w, _ = image_source.shape
+            pred_boxes = pred_boxes * torch.Tensor([w, h, w, h])
+            pred_boxes = box_convert(boxes=pred_boxes, in_fmt="cxcywh", out_fmt="xyxy").numpy()
 
-        return float(sum(aps) / max(len(aps), 1))
+
+            ap_dict = compute_coco_style_ap(
+                pred_boxes,
+                phrases,
+                gt_boxes,
+                logits,
+                positive_phrases=["malignant tumor", "dense tumor lump", "tumor"],
+                img_path=img_path,
+            )
+            aps.append(ap_dict["AP"])
+            print(f"ap : {ap_dict['AP']}")
+
+            if gt_boxes.size > 0:
+                aps_positive.append(ap_dict["AP"])
+            
+
+        return float(sum(aps) / max(len(aps), 1)), float(sum(aps_positive) / max(len(aps_positive), 1))
+
 
     def generate_report(self, results):
         text = format_report(results)
@@ -147,7 +173,7 @@ def main(dataset_path=None, csv_path=None, prompt=None, max_examples=None):
 
     for i, dpath in enumerate(dataset_paths):
         ds_name = f"Dataset_{chr(ord('A') + i)}"
-        ap = evaluator.evaluate(
+        ap, ap_positive = evaluator.evaluate(
             dataset_path=dpath,
             csv_name=annotation_files[i],
             prompt=prompts[i],
@@ -160,6 +186,7 @@ def main(dataset_path=None, csv_path=None, prompt=None, max_examples=None):
             "box_threshold": DEFAULT_THRESHOLDS["box_threshold"],
             "text_threshold": DEFAULT_THRESHOLDS["text_threshold"],
             "ap": ap,
+            "ap_positive": ap_positive,
         }
 
     evaluator.generate_report(results)

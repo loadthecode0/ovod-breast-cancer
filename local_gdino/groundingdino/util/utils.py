@@ -601,7 +601,11 @@ def get_phrases_from_posmap(
 ):
     assert isinstance(posmap, torch.Tensor), "posmap must be torch.Tensor"
     if posmap.dim() == 1:
+        # print(f"posmap.shape: {posmap.shape}")
+        # print(f"posmap: {posmap}")
+        # print(f"tokenized['input_ids'] length: {len(tokenized['input_ids'])}")
         non_zero_idx = posmap.nonzero(as_tuple=True)[0].tolist()
+        # print(f"non_zero_idx: {non_zero_idx}")
         token_ids = [tokenized["input_ids"][i] for i in non_zero_idx]
         return tokenizer.decode(token_ids)
     else:

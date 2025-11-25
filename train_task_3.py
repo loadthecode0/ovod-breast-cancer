@@ -820,9 +820,9 @@ if __name__ == "__main__":
     labeled_csv  = sys.argv[2] if len(sys.argv) > 2 else None
     unlabeled_path = sys.argv[3] if len(sys.argv) > 3 else None
     unlabeled_csv = sys.argv[4] if len(sys.argv) > 4 else None
-    save_path    = sys.argv[3] if len(sys.argv) > 3 else None
-    num_examples = int(sys.argv[4]) if len(sys.argv) > 4 else None
-    lambda_u = float(sys.argv[5]) if len(sys.argv) > 5 else 1.0
+    save_path    = sys.argv[3] if len(sys.argv) > 5 else None
+    num_examples = int(sys.argv[4]) if len(sys.argv) > 6 else None
+    lambda_u = float(sys.argv[5]) if len(sys.argv) > 7 else 1.0
 
     for lambda_u in [1.0]:
         main(labeled_path=labeled_path, labeled_csv=labeled_csv, unlabeled_path=unlabeled_path, unlabeled_csv=unlabeled_csv, save_path=save_path, num_examples=num_examples, lambda_u=lambda_u)

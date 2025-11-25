@@ -39,7 +39,7 @@ def get_paths_and_device(mode="kaggle"):
             "task_2_1_save": "./weights/task_2_1_wts/",
             "task_2_1_load": "./weights/task_2_1_wts/",
             "task_2_2_save": "./weights/task_2_2_wts/",
-            "task_2_2_load": "./weights/task_2_2_wts_new/",
+            "task_2_2_load": "./weights/task_2_2_wts/",
             "task_3_save": "./weights/task_3_wts/",
             "task_3_load": "./weights/task_3_wts/",
         }

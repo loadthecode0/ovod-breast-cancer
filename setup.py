@@ -1,7 +1,7 @@
 # central_paths.py
 import torch
 
-def get_paths_and_device(mode="local"):
+def get_paths_and_device(mode="kaggle"):
     """
     Returns:
         paths: dict containing dataset + weight paths

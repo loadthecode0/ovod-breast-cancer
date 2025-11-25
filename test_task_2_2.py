@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""
-CoOp Evaluation for GroundingDINO
----------------------------------
-Loads:
-    - GroundingDINO (patched)
-    - Trained CoOp context vectors
 
-Runs full evaluation:
-    - Predict with learned context
-    - Visualize pred & GT
-    - Compute COCO-style AP
-    
-Very similar to zero_shot_test.py but with CoOp prompt injection.
-"""
 
 import os
 import sys
@@ -63,13 +50,20 @@ from utils_a2 import (
 # CLASS: CoOpEvaluator
 # =====================================================
 class CoCoOpEvaluator:
-    def __init__(self, device, k_context=8):
+    def __init__(self, device, k_context=8, D=768):
         self.device = device
         self.model = None
         self.context = None
         self.K = k_context
         self.config_path = None
         self.weights_path = None
+        self.meta_net = torch.nn.Sequential(
+            torch.nn.Linear(D, D),
+            torch.nn.ReLU(),
+            torch.nn.Linear(D, D)
+        )
+
+
 
     # ---------------------------------------------
     def load_requirements(self, dst_dir):
@@ -85,11 +79,11 @@ class CoCoOpEvaluator:
         print(f"[INFO] Loading patched GroundingDINO on: {self.device}")
         self.model = load_model(self.config_path, self.weights_path, self.device)
         self.model.to(self.device)
-        print("[INFO] Model loaded for CoOp evaluation.")
+        print("[INFO] Model loaded for CoCoOp evaluation.")
 
     # ---------------------------------------------
     def load_context(self, context_path):
-        print(f"[INFO] Loading trained CoOp context from: {context_path}")
+        print(f"[INFO] Loading trained CoCoOp context from: {context_path}")
         ctx = torch.load(context_path)
         if ctx.dim() != 2:
             raise ValueError("Loaded context must be shape [K, D].")
@@ -99,12 +93,14 @@ class CoCoOpEvaluator:
 
     def load_meta_net(self, meta_net_path):
         print(f"[INFO] Loading trained MetaNet from: {meta_net_path}")
-        meta_net = torch.load(meta_net_path)
-        self.meta_net = meta_net.to(self.device)
+        # meta_net = torch.load(meta_net_path)
+        state = torch.load(meta_net_path, map_location=self.device)
+        self.meta_net.load_state_dict(state)
+        self.meta_net = self.meta_net.to(self.device)
 
     # ---------------------------------------------
     def predict_with_context(self, image_source, image, prompt, box_threshold, text_threshold):
-        """Run GDINO forward but inject CoOp context vectors."""
+        """Run GDINO forward but inject CoCoOp context vectors."""
         images_nested_tensor = nested_tensor_from_tensor_list([image]).to(self.device)
         # print(type(image))
         image = image.to(self.device)
@@ -124,11 +120,13 @@ class CoCoOpEvaluator:
             fmap = last_level.tensors            # [B, C, H, W]
 
             # global average pooling
-            pooled = fmap.mean(dim=[2, 3])            # [B, C]
+            pooled = fmap.mean(dim=[2, 3]).to(self.device)            # [B, C]
             # print(f"pooled shape: {pooled.shape}")
         
 
         caption = "[PAD] "*self.K + ". " + prompt
+        print(f"{pooled[0].device}")
+        # print(f"{self.meta_net.device}")
         proj = self.meta_net(pooled[0])     # [D]
         # add to every context vector
         context = self.context + proj  # [K, D]
@@ -201,6 +199,8 @@ class CoCoOpEvaluator:
         image_names = df["image_name"].unique()
         aps = []
         aps_positive = []
+        ap50 = []
+        ap75 = []
         print(f"Context: {context_path}")
         print(f"Dataset: {dataset_path}")
         print(f"CSV    : {csv_name}")
@@ -210,10 +210,10 @@ class CoCoOpEvaluator:
         print(f"Text Threshold: {text_threshold}")
         print(f"IOU Threshold: {iou_threshold}")
 
-        save_dir = f"outputs/coop_test/{normalize_dataset_path(context_path)}/{normalize_dataset_path(dataset_path)}"
+        save_dir = f"outputs/cocoop_test/{normalize_dataset_path(context_path)}/{normalize_dataset_path(dataset_path)}"
         ensure_dir(save_dir)
 
-        for img_name in tqdm(image_names, desc="CoOp Evaluation"):
+        for img_name in tqdm(image_names, desc="CoCoOp Evaluation"):
             img_path = os.path.join(dataset_path, img_name)
 
             print(f"img_path: {img_path}")
@@ -302,12 +302,14 @@ class CoCoOpEvaluator:
             )
             aps.append(ap_dict["AP"])
             print(f"ap : {ap_dict['AP']}")
+            ap50.append(ap_dict["AP50"])
+            ap75.append(ap_dict["AP75"])
 
             if len(gt_boxes) > 0:
                 aps_positive.append(ap_dict["AP-positive"])
             
 
-        return float(sum(aps) / max(len(aps), 1)), float(sum(aps_positive) / max(len(aps_positive), 1))
+        return float(sum(aps) / max(len(aps), 1)), float(sum(aps_positive) / max(len(aps_positive), 1)), float(sum(ap50) / max(len(ap50), 1)), float(sum(ap75) / max(len(ap75), 1))
 
 
 # =====================================================
@@ -315,18 +317,19 @@ class CoCoOpEvaluator:
 # =====================================================
 def main(dataset_path=None, csv_path=None, context_path=None, prompt=None, max_examples=None):
 
-    evaluator = CoOpEvaluator(device=DEVICE)
+    evaluator = CoCoOpEvaluator(device=DEVICE)
 
     evaluator.load_requirements(PATHS["weights"])
     evaluator.load_model()
 
     if context_path is None:
-        context_path = PATHS["task_2_1_load"] + "_data_dataset_A_train.pt"
+        context_path = PATHS["task_2_2_load"] + "_data_dataset_B_train.pt"
 
     evaluator.load_context(context_path)
+    evaluator.load_meta_net(PATHS["task_2_2_load"] + "_data_dataset_B_train_meta_net.pt")
 
-    dataset_path = dataset_path or PATHS["test_A"]
-    csv_path = csv_path or "test.csv"
+    dataset_path = dataset_path or PATHS["test_B"]
+    csv_path = csv_path or "test_updated.csv"
     prompt = prompt or DEFAULT_PROMPTS["A"][0]
 
     print(f"Context: {context_path}")
@@ -335,7 +338,7 @@ def main(dataset_path=None, csv_path=None, context_path=None, prompt=None, max_e
     print(f"Max Examples: {max_examples}")
     print(f"Prompt : {prompt}")
 
-    ap, ap_positive = evaluator.evaluate(
+    ap, ap_positive, ap50, ap75 = evaluator.evaluate(
         context_path=context_path,
         dataset_path=dataset_path,
         csv_name=csv_path,
@@ -346,13 +349,15 @@ def main(dataset_path=None, csv_path=None, context_path=None, prompt=None, max_e
     )
 
     print("\n=====================================")
-    print("         CoOp Evaluation AP")
+    print("         CoCoOp Evaluation AP")
     print("=====================================")
     print(f"Context: {context_path}")
     print(f"Dataset: {dataset_path}")
     print(f"Prompt : {prompt}")
     print(f"AP     : {ap:.6f}")
     print(f"AP-positive     : {ap_positive:.6f}")
+    print(f"AP50     : {ap50:.6f}")
+    print(f"AP75     : {ap75:.6f}")
     print("=====================================\n")
 
 
